@@ -8,6 +8,7 @@ const app = express();
 app.use(cors({ origin: "*" }));
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const EXTENSION_ID = process.env.EXTENSION_ID;
 
 app.get("/auth/github/callback", async (req, res) => {
   const { code } = req.query;
@@ -24,9 +25,7 @@ app.get("/auth/github/callback", async (req, res) => {
     }
   );
   const accessToken = tokenRes.data.access_token;
-  res.redirect(
-    `https://oalfhjhcbifihnhoppjkcjncmacgpdje.chromiumapp.org/?token=${accessToken}`
-  );
+  res.redirect(`https://${EXTENSION_ID}.chromiumapp.org/?token=${accessToken}`);
 });
 
 app.get("/scrape", async (req, res) => {
@@ -44,7 +43,6 @@ app.get("/scrape", async (req, res) => {
 
     const page = await browser.newPage();
 
-    // Set a desktop user-agent to bypass bot detection
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
@@ -53,8 +51,6 @@ app.get("/scrape", async (req, res) => {
     const response = await page.goto(url, {
       waitUntil: "domcontentloaded",
     });
-
-    // Wait for Cloudflare to issue clearance (usually within 5–10s)
     let clearanceSet = false;
     for (let i = 0; i < 60; i++) {
       const cookies = await page.cookies();
@@ -72,8 +68,6 @@ app.get("/scrape", async (req, res) => {
         error: "cf_clearance cookie was not detected within 60 seconds",
       });
     }
-
-    // Wait for problem statement to load
     await page.waitForSelector(".problem-statement", { timeout: 15000 });
 
     const problemHtml = await page.$eval(
@@ -91,7 +85,6 @@ app.get("/scrape", async (req, res) => {
 });
 
 app.get("/code", async (req, res) => {
-  // Get the URL from the query string and validate it
   const url = req.query.url;
   if (!url || !url.startsWith("https://codeforces.com/")) {
     return res.status(400).json({ error: "Invalid Codeforces URL" });
@@ -99,12 +92,10 @@ app.get("/code", async (req, res) => {
 
   try {
     const browser = await puppeteer.launch({
-      headless: false, // Use the "new" headless mode, or set to false for debugging
+      headless: false,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
-
-    // Set a standard desktop user agent to mimic a real browser
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
@@ -113,8 +104,6 @@ app.get("/code", async (req, res) => {
     await page.goto(url, {
       waitUntil: "domcontentloaded",
     });
-
-    // Wait for Cloudflare to issue clearance (usually within 5–10 seconds)
     let clearanceSet = false;
     for (let i = 0; i < 60; i++) {
       const cookies = await page.cookies();
@@ -123,7 +112,7 @@ app.get("/code", async (req, res) => {
         break;
       }
       console.log(`Waiting for cf_clearance cookie (${i + 1}s)...`);
-      await new Promise((r) => setTimeout(r, 1000)); // wait 1 second
+      await new Promise((r) => setTimeout(r, 1000));
     }
 
     if (!clearanceSet) {
@@ -132,18 +121,14 @@ app.get("/code", async (req, res) => {
         error: "cf_clearance cookie was not detected within 60 seconds",
       });
     }
-
-    // Wait for the code element to be loaded
     await page.waitForSelector("pre#program-source-text", { timeout: 15000 });
-
-    // Scrape the submission code by extracting the inner text of the <pre> element
     const code = await page.$eval(
       "pre#program-source-text",
       (el) => el.innerText
     );
 
     await browser.close();
-    console.log("Scraped code:", code.slice(0, 100)); // log first 100 characters for debugging
+    console.log("Scraped code:", code.slice(0, 100));
     res.json({ code });
   } catch (error) {
     console.error("Error scraping submission code:", error.message);
