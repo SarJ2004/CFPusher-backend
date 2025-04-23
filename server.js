@@ -8,10 +8,13 @@ const app = express();
 app.use(cors({ origin: "*" }));
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
-const EXTENSION_ID = process.env.EXTENSION_ID;
 
 app.get("/auth/github/callback", async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
+
+  if (!code || !state) {
+    return res.status(400).json({ error: "Missing code or state" });
+  }
 
   const tokenRes = await axios.post(
     `https://github.com/login/oauth/access_token`,
@@ -24,8 +27,14 @@ app.get("/auth/github/callback", async (req, res) => {
       headers: { Accept: "application/json" },
     }
   );
+
   const accessToken = tokenRes.data.access_token;
-  res.redirect(`https://${EXTENSION_ID}.chromiumapp.org/?token=${accessToken}`);
+
+  // redirect back to the extension dynamically
+  const safeRedirect = decodeURIComponent(state);
+  const finalUrl = `${safeRedirect}?token=${accessToken}`;
+
+  return res.redirect(finalUrl);
 });
 
 app.get("/scrape", async (req, res) => {
@@ -36,7 +45,6 @@ app.get("/scrape", async (req, res) => {
 
   try {
     const browser = await puppeteer.launch({
-      executablePath: "/usr/bin/chromium",
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
